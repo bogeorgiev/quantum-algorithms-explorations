@@ -1,0 +1,100 @@
+import sys
+sys.path.append("/home/bogdan/Projects/Quantum Computing/quantum-algorithms/quantum-algorithms/")
+import torch
+import argparse
+from torchvision import datasets, transforms
+import torchvision
+
+from qmlclasses import QCNN
+import math
+import numpy as np
+from algorithms.superposition.grover_superposition import superposition
+from torch.utils.data import Dataset, DataLoader
+
+import cirq
+from cirq import Simulator
+
+parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+parser.add_argument('--batch-size', type=int, default=50, metavar='N',
+                        help='input batch size for training (default: 64)')
+parser.add_argument('--test-batch-size', type=int, default=200, metavar='N',
+                        help='input batch size for testing (default: 1000)')
+parser.add_argument('--epochs', type=int, default=10, metavar='N',
+                        help='number of epochs to train (default: 10)')
+parser.add_argument('--lr', type=float, default=5.0e-5, metavar='LR',
+                        help='learning rate (default: 0.01)')
+parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
+                        help='SGD momentum (default: 0.5)')
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                        help='disables CUDA training')
+parser.add_argument('--seed', type=int, default=1, metavar='S',
+                        help='random seed (default: 1)')
+parser.add_argument('--log-interval', type=int, default=1000, metavar='N',
+                        help='how many batches to wait before logging training status')
+parser.add_argument('--save-model', action='store_true', default=False,
+                        help='For Saving the current Model')
+parser.add_argument('--window-size-x', type=int, default=4,
+                        help='window x-dim')
+parser.add_argument('--window-size-y', type=int, default=4,
+                        help='window y-dim')
+parser.add_argument('--window-stride', type=int, default=2,
+                        help='window stride')
+
+args = parser.parse_args()
+use_cuda = not args.no_cuda and torch.cuda.is_available()
+
+torch.manual_seed(args.seed)
+
+device = torch.device("cuda" if use_cuda else "cpu")
+
+kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+
+train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('../data', train=True, download=True,
+                       transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           #transforms.Normalize((0.1307,), (0.3081,))
+                       ])),
+        batch_size=args.batch_size, shuffle=True, **kwargs)
+
+test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('../data', train=False, transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))
+                       ])),
+        batch_size=args.test_batch_size, shuffle=True, **kwargs)
+
+it = iter(train_loader)
+
+batch, y = next(it)
+
+
+def prepare_windows(batch):
+    pil_transformer = torchvision.transforms.ToPILImage(mode=None)
+    tensor_transformer = torchvision.transforms.ToTensor()
+
+    num_h_translates = math.floor((28 - args.window_size_x) / args.window_stride) + 1
+    num_v_translates = math.floor((28 - args.window_size_y) / args.window_stride) + 1
+    num_windows = num_h_translates * num_v_translates
+
+    out = torch.zeros([args.batch_size, num_windows, args.window_size_x * args.window_size_y])
+
+    for sample_idx in range(args.batch_size):
+        sample = batch[sample_idx, 0, :, :]
+        sample = pil_transformer(sample)
+        for x in range(num_h_translates):
+            for y in range(num_v_translates):
+                current_window = torchvision.transforms.functional.crop(sample, x * args.window_size_x, y * args.window_size_y,
+                        args.window_size_x, args.window_size_y)
+                current_window = tensor_transformer(current_window)
+                current_window = current_window.view(-1)
+                out[sample_idx, x * num_h_translate + num_v_translates, :] = current_window
+    return out.numpy()
+
+qcnn = QCNN()
+out = prepare_windows(batch)
+
+
+for b in range(args.batch_size):
+        
+print(qcnn.type)
